@@ -1,0 +1,1 @@
+{"y": {"model": "GradientBoostingRegressor", "min_samples_split": 5, "min_samples_leaf": 40, "max_depth": 1, "n_estimators": 300}, "t": {"model": "GradientBoostingRegressor", "min_samples_split": 5, "min_samples_leaf": 40, "max_depth": 1, "n_estimators": 300}, "final": {"model": "GradientBoostingRegressor", "min_samples_split": 15, "min_samples_leaf": 15}, "dml": {"cv": 10}}

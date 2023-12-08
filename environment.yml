@@ -1,0 +1,22 @@
+name: dml4fluxes
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda
+  - doubleml
+  - tqdm
+  - scikit-learn
+  - matplotlib
+  - econml
+  - ipykernel
+  - ipython
+  - pandas
+  - numpy
+  - astroid

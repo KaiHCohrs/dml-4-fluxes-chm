@@ -1,0 +1,1 @@
+{"site_name": "FI-Hyy", "syn": false, "Q10": 1.5, "relnoise": 0.1, "transform_T": true, "month_wise": true, "delta": "heuristic3", "X": ["VPD", "TA", "wdefcum", "SW_POT_sm", "SW_POT_sm_diff", "PA", "WS", "GPP_prox", "P", "WD_sin", "WD_cos", "NEE_nt_avg", "TS_1", "TS_2", "SWC_1", "SWC_2"], "W": [], "years": [2015], "norm_type": "standardize"}
