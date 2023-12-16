@@ -5,7 +5,10 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import Normalize
 from scipy.interpolate import interpn
-#import met_brewer
+from itertools import product
+
+import numpy as np
+from skill_metrics import taylor_diagram
 
 import dml4fluxes.datasets.relevant_variables as relevant_variables
 from dml4fluxes.datasets.preprocessing import unwrap_time, standardize_column_names
@@ -194,112 +197,119 @@ def cross_consistency(data, path=False, method='orth', index=1, QC=True):
     if path:
         fig.savefig(f'{path}/cross_consistency_{method}{index}.png', bbox_inches='tight') 
 
-def monthly_curves(site, year, flux, experiment_name=None, data=None, res=False, path=False, final="", syn=False, input=None):
+
+def monthly_curves(flux, data, compare_to=['DT', 'NT'], results_path=None, suffix=""):
     
-    if data is None:
-        if syn:
-            data = load_partition(experiment_name, site, year=2015, syn=syn)
-            data['DateTime'] = data.index
-            data = unwrap_time(data)
-            data = standardize_column_names(data)
-            data = data[list(set(data.columns)
-                                    & set(relevant_variables.variables))]
-        else:
-            data = load_partition(experiment_name, site, year=2015, syn=syn)
-            data['DateTime'] = data.index
-            data = unwrap_time(data)
-            data = standardize_column_names(data)
-            data = data[list(set(data.columns)
-                        & set(relevant_variables.variables))]
-            
-    data['NEE_DT'] = data["RECO_DT"] - data["GPP_DT"]
-    data['NEE_NT'] = data["RECO_NT"] - data["GPP_NT"]
-    
+    # LOAD DATA from 
     month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    
+    colors = ['#d73027', '#fc8d59','#91bfdb','tab:green']
+    line_styles = ['-', '--', '-.', '-']
 
-    subdata = data[(data['site'] == site) & (data['Year']==year)]
-
-    fig, axes = plt.subplots(12,1, figsize=(40,50), sharex=True, sharey=True)
+    fig, axes = plt.subplots(12,1, figsize=(40,50), sharex = True, sharey=True)
     
     for month, ax in enumerate(axes.flatten()):
-        df_temp = subdata[subdata["Month"] == month+1]
-        if syn:
-            orth = df_temp[flux +"_orth"]
-            GT = df_temp[flux + "_syn"]
-            
-            if flux == 'NEE':
-                GT_clean = df_temp['NEE_syn_clean']
-
-            
-        else:
-            DT = df_temp[flux + "_DT"]
-            NT = df_temp[flux +"_NT"]
-            orth = df_temp[flux +"_orth"]
-            ann = df_temp[flux +"_ann"]
-            
-            if flux == 'NEE':
-                GT = df_temp[flux]
-        if input:
-            curves = dict()
-            for var in input:
-                curves[var] = df_temp[var]
-            
-        if (flux == 'RECO') & (res==True):
-            orth_res = df_temp[flux +"_orth_res"]
+        df_temp = data[data["Month"] == month+1]
+        mean = df_temp[flux + "_mean"]
+        std = df_temp[flux +"_std"]
+        df_temp = df_temp.sort_values("tom")
+        # Check if there are duplicates in df_temp['tom']
+        if df_temp['tom'].duplicated().any():
+            print("Duplicates in tom")
         
-        if syn:
-            ax.plot(GT.values, color = 'green', label = "Ground Truth")
-            if flux == 'NEE':
-                ax.plot(GT_clean.values, color = 'green', label = "Ground Truth clean")
-            ax.plot(orth.values, color = "red", label = "DML")
-            
-            
-        else:
-            if flux == 'NEE':
-                ax.plot(GT.values, color = 'green', label = "Ground Truth")
+        ax.fill_between(df_temp["tom"].unique(), mean.values - std*1.96, mean.values + std*1.96, color = 'blue', alpha=0.2)
+        ax.plot(df_temp["tom"].unique(), mean.values, color = 'blue', label = "Mean")
+        ax.set_title(month_names[month])
         
-            ax.plot(DT.values, color = 'blue', label = "Daytime Method")
-            ax.plot(NT.values, color = 'gray', alpha=0.5, label = "Nighttime Method")
-            ax.plot(ann.values, color =  'orange', label = "ANN")
-            ax.plot(orth.values, color =  'red', label = "DML")
-        if not syn:
-            for i, qc in enumerate(df_temp['NEE_QC']):
-                if qc == 0:
-                    ax.axvspan(i-0.5, i+0.5, color='grey', alpha=0.3, lw=0)
-        else:
-            for i, qc in enumerate(df_temp['NEE_QC']):
+        # Make xticks time of month tom
+        ax.set_xticks(df_temp["tom"].unique()[::48])
+        # Make every 48th tick a label that corresponds to the day
+        ax.set_xticklabels(df_temp["dom"][::48], rotation=90)
+        
+        
+        for i, compare in enumerate(compare_to):
+            ax.plot(df_temp[f'{flux}_{compare}'].values, color = colors[i], linestyle=line_styles[i] , label = compare)
+        
+        for i, qc in enumerate(df_temp['NEE_QC']):
+            if qc == 0:
                 ax.axvspan(i-0.5, i+0.5, color='grey', alpha=0.3, lw=0)
-        if input:
-            #other_colors = [met_colors[i] for i in [6, 3, 10, 1, 5, 9, 0, 12, 13]]
-            for i, var in enumerate(input):
-                if var == 'T':
-                    ax.plot(-curves[var].values, color= 'yellow', label = 'Rect Hyperbola')
-                else:
-                    ax.plot(curves[var].values, label = var)
-
-        if (flux == 'RECO') & (res==True):
-            ax.plot(orth_res.values, color = "purple", label = "DML residuals")
         
-        #if data_type == 'train':
-        #    ax.plot(nuisance.values, color = "green", label = "orth nuisance")
+        #Todo: make limits depending on max and min values
         if flux == 'NEE':
-            ax.set_ylim([-20, 20])
+            ax.set_ylim([-25, 20])
         elif flux == 'GPP': 
             ax.set_ylim([-5, 30])
         elif flux == 'RECO':
-            ax.set_ylim([-1, 15])
+            ax.set_ylim([-5, 30])
         
         ax.xaxis.set_tick_params(labelsize=24)
         ax.yaxis.set_tick_params(labelsize=24)
 
 
-        handles, labels = ax.get_legend_handles_labels()
-        fig.legend(handles, labels, loc=(0.45, 0.90), fontsize=24)
-        ax.set_title(f'{month_names[month]}', fontsize=24)
-    fig.suptitle(f'Comparison of the predicted {flux} in monthly curves for different flux partitioning methods in {site} in {year} ({experiment_name})', fontsize=24)
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, loc=(0.45, 0.90), fontsize=24)
+
+    fig.suptitle(f'Comparison of the predicted {flux} in monthly curves for different flux partitioning methods.', fontsize=24)
     #fig.tight_layout()
-    if path:
-        fig.savefig(f'{path}/images/{site}_{flux}_{year}{final}_{experiment_name}.png', bbox_inches='tight', facecolor='white',  transparent=False)         
+    if results_path:
+        fig.savefig(f'{results_path}/{flux}{suffix}.pdf', bbox_inches='tight', facecolor='white',  transparent=False)   
+
+def taylor_plot(NEE, GPP, RECO, ensemble_size, filtered=True, results_path=None, suffix=""):
+#filtered = True
+#ensemble_size = 100
+#obs_label = 'NEE_NT'
+    data = {'NEE': NEE, 'GPP': GPP, 'RECO': RECO}
+            
+    compare_to = ['mean', 'DT', 'NT']
+    fig, axes = plt.subplots(2,3, figsize=(18,12))
+    
+    for j, (obs, flux) in enumerate(product(['NT', 'DT'], ['NEE', 'GPP', 'RECO'])):
+        compare_to.remove(obs)
+        flux_data = data[flux]
+        ax = axes.flatten()[j]
+        if filtered:
+            mask = flux_data['NEE_QC'] == 0
+        else:
+            True
+
+        # Generate some dummy data
+        observed = flux_data[flux+'_'+obs].values[mask]
+        models = [flux_data[f'{flux}_{i}'].values[mask] for i in range(ensemble_size)] + [flux_data[method].values[mask] for method in [flux+'_'+method for method in compare_to]]
+
+        # Compute standard deviations and correlation coefficients
+        stddevs = np.array([np.std(observed), *[np.std(model) for model in models]])
+
+        # Compute centered root mean squared error for each model to the observed data
+        observations_centered = observed - np.mean(observed)
+        models_centered = [model - np.mean(model) for model in models]
+        RMSE_centered = [mean_squared_error(observations_centered, model_centered, squared=False) for model_centered in models_centered]
+        CRMSES = np.array([0] + RMSE_centered)
+
+        # Compute correlation coefficient
+        corrcoefs = np.array([1]+[*[np.corrcoef(observed, model)[0, 1] for model in models]])
+
+        # Create the Taylor diagram
+
+        labels = ['mean', 'DT']
+        colors = ['black', 'black']
+        markers = ['x', 'x']
+
+        # Add title to subplot
+        ax.set_title(f'{flux} {obs}', fontsize=16)
+
+        taylor_diagram(ax, stddevs[:ensemble_size+1], CRMSES[:ensemble_size+1], corrcoefs[:ensemble_size+1], markerLabel=['Observation', *([f'' for i in range(ensemble_size)])], styleOBS = '-', colOBS = 'r', markerobs = 'o', titleOBS = 'observation', 
+                    markerColor='orange', alpha=0.5, markersymbol='.', markerSize=3, colRMS='red', widthRMS=2.0, 
+                    checkstats='on')
+        for i in range(2):
+            taylor_diagram(ax, stddevs[[0,ensemble_size+1+i]], CRMSES[[0,ensemble_size+1+i]], corrcoefs[[0,ensemble_size+1+i]], markerLabel=['Observation',labels[i]], styleOBS = '-', colOBS = 'r', markerobs = 'o', titleOBS = 'observation', 
+                        markerColor=colors[i], markersymbol=markers[i], markerSize=6, colRMS='red', widthRMS=2.0, 
+                        checkstats='on')
+        compare_to = compare_to + [obs]
+        
+    fig.suptitle(f'Taylor plot of estimations over ensemble and other models.', fontsize=12)
+
+    if results_path:
+        fig.savefig(f'{results_path}/Taylor_diagram{suffix}.pdf', bbox_inches='tight', facecolor='white',  transparent=False)   
 
 def monthly_Q10_model_curves(data, site, year, res=False, path=False, final="", syn=False):
     

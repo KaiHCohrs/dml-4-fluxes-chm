@@ -1,5 +1,7 @@
 """File containing a mapping of old to new column names and relevant variables."""
 
+"""File containing a mapping of old to new column names and relevant variables."""
+
 mappings = {'TA_F': 'TA',  #Fluxnet mappings
             'TA_F_QC': 'TA_QC',
             'SW_IN_F': 'SW_IN',
@@ -12,9 +14,12 @@ mappings = {'TA_F': 'TA',  #Fluxnet mappings
             'PA_F_QC': 'PA_QC',
             'P_F': 'P',
             'P_F_QC': 'P_QC',
+            'P_ERA': 'P_ERA',
             'WS_F': 'WS',
             'LE_F_MDS': 'LE',
             'LE_F_MDS_QC': 'LE_QC',
+            'H_F_MDS': 'H',
+            'H_F_MDS_QC': 'H_QC',
             'TS_F_MDS_1': 'TS_1',
             'TS_F_MDS_1_QC': 'TS_1_QC',
             'TS_F_MDS_2': 'TS_2',
@@ -70,6 +75,8 @@ variables = ['TA',
             'WS',
             'LE',
             'LE_QC',
+            'H',
+            'H_QC',
             'TS_1',
             'TS_1_QC',
             'TS_2',
@@ -133,7 +140,14 @@ variables = ['TA',
             'doy_sin',
             'doy_cos',
             'SW_DIF',
-            'SW_DIF_QC'
+            'SW_DIF_QC',
+            'WD',
+            'WD_cos',
+            'WD_sin',
+            'NEE_nt_avg',
+            'NEE_dt_avg',
+            'EF_dt_avg',
+            'P_ERA',
 ]
 
 biomes = {

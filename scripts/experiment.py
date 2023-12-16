@@ -71,7 +71,7 @@ def main(parser: ArgumentParser = None, **kwargs):
                 X = X, #'CWD'
                 W = [],
                 years = 'all', # 'all',
-                test_scenario=False,
+                test_scenario=True,
                 RMSE=True,
                 alternative_fluxes=None,
                 alternative_treatment=None, #"SW_IN_POT",
@@ -105,7 +105,7 @@ def main(parser: ArgumentParser = None, **kwargs):
                         n_estimators=300,
                         n_iter_no_change=10,
                         validation_fraction=0.3,                        
-			tol=0.00001,
+			            tol=0.0001,
 			)
     
     dml_config = dict(cv=10)
@@ -129,8 +129,7 @@ def main(parser: ArgumentParser = None, **kwargs):
     else:
         exp.prepare_data()
         exp.fit_models()
-    
-    
+
     tables, dictionary = numerical_cross_consistency(exp.experiment_name, syn=False)
     tables, dictionary = numerical_cross_consistency(exp.experiment_name, syn=False, partial='DT')
     tables, dictionary = numerical_cross_consistency(exp.experiment_name, syn=False, partial='NT')

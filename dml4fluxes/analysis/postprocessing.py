@@ -12,6 +12,37 @@ from dml4fluxes.datasets.generate_data import synthetic_dataset
 from dml4fluxes.experiments.utility import get_available_sites
 import json
 
+import pandas as pd
+from pathlib import Path
+from nneddyproc.analysis.utils import unfold_time
+
+def prepare_data(GPP, RECO, NEE, LUE=None, ensemble_size=100):
+    GPP = unfold_time(GPP)
+    RECO = unfold_time(RECO)
+    NEE = unfold_time(NEE)
+    
+    GPP['GPP_mean'] = GPP.iloc[:,0:ensemble_size].values.mean(axis=1)
+    GPP['GPP_std'] = GPP.iloc[:,0:ensemble_size].values.std(axis=1)
+
+    RECO['RECO_mean'] = RECO.iloc[:,0:ensemble_size].values.mean(axis=1)
+    RECO['RECO_std'] = RECO.iloc[:,0:ensemble_size].values.std(axis=1)
+
+    NEE['NEE_mean'] = NEE.iloc[:,0:ensemble_size].values.mean(axis=1)
+    NEE['NEE_std'] = NEE.iloc[:,0:ensemble_size].values.std(axis=1)
+    
+    # transform all columns that are float64 to float32
+    GPP[GPP.columns[GPP.dtypes == 'float64']] = GPP[GPP.columns[GPP.dtypes == 'float64']].astype('float32')
+    RECO[RECO.columns[RECO.dtypes == 'float64']] = RECO[RECO.columns[RECO.dtypes == 'float64']].astype('float32')
+    NEE[NEE.columns[NEE.dtypes == 'float64']] = NEE[NEE.columns[NEE.dtypes == 'float64']].astype('float32')
+    
+    if LUE is not None:
+        LUE = unfold_time(LUE)
+        LUE['LUE_mean'] = LUE.iloc[:,0:ensemble_size].values.mean(axis=1)
+        LUE['LUE_std'] = LUE.iloc[:,0:ensemble_size].values.std(axis=1) 
+        LUE[LUE.columns[LUE.dtypes == 'float64']] = LUE[LUE.columns[LUE.dtypes == 'float64']].astype('float32')
+    
+    return GPP, RECO, NEE, LUE
+
 def timely_averages(data):
     for flux_name in ['RECO_DT', 'RECO_NT', 'RECO_orth', 'RECO_ann',
                         'GPP_DT', 'GPP_NT', 'GPP_orth', 'GPP_ann',

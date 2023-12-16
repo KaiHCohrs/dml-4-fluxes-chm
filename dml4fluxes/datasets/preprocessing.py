@@ -7,10 +7,51 @@ import pandas as pd
 import numpy as np
 
 import dml4fluxes.datasets.relevant_variables as relevant_variables
-from ..experiments.utility import get_available_sites
+
+def prepare_data(dataset_config, path=None):
+    site = dataset_config['site']
+    year = dataset_config['year']
+    quality_min = dataset_config['quality_min']
+
+    #Run a data preprocessing pipeline
+    data = load_data(site, path=path)
+    data = unwrap_time(data)
+    data = data.set_index('DateTime')
+    data['DateTime'] = data.index
+    data = standardize_column_names(data)
+    data = data[list(set(data.columns) & set(relevant_variables.variables))]
+    data = NEE_quality_masks(data, quality_min)
+    
+    #### Compute additional variables ####
+    data['SW_POT_sm'] = sw_pot_sm(data)
+    data['SW_POT_sm_diff'] = sw_pot_sm_diff(data)
+    data['CWD'] = wdefcum(data)
+    data['SW_ratio'] = diffuse_to_direct_rad(data)
+    data["doy"] = pd.to_datetime(data['DateTime']).dt.dayofyear
+    data["tod"] = pd.to_datetime(data['DateTime']).dt.hour*60 + pd.to_datetime(data['DateTime']).dt.minute
+    data["doy_sin"], data["doy_cos"] = make_cyclic(data["doy"])
+    data["tod_sin"], data["tod_cos"] = make_cyclic(data["tod"])
+    
+    data['GPP_prox'], data['NEE_nt_avg'], data['NEE_dt_avg'] = GPP_prox(data)
+    data['WD_sin'], data['WD_cos'] = WD_trans(data)
+    data['SW_POT_diff'] = sw_pot_diff(data)
+    #data = EF_1(data)
+    data = EF_2(data)
+    data = data.set_index('DateTime')
+    
+    # Drop problematic rows
+    data = data.replace(-9999, np.nan)
+
+    ## NN should normalize internally
+    ## dataloader has normalizing constants for the model
+    ## during training input data is already normalized and outputs not necessary
+    ## during prediction time apply normalizing constants before and after prediction
+
+    return data[data['Year'] == year]
 
 
-def load_data(site_name, year=2015, add_ann=True, files_path=False):
+
+def load_data(site_name, path=None):
     """
     Loads data flux tower data from different sources for flux partitioning experiments.
 
@@ -28,45 +69,30 @@ def load_data(site_name, year=2015, add_ann=True, files_path=False):
         data (pd.DataFrame): Flux data including all available meterological data.
     """
 
-
-    data_folder = pathlib.Path(__file__).parent.parent.parent.joinpath('data')
-
-    if site_name == 'book':
-        data = pd.read_csv(data_folder.joinpath('Bookchapter', 'Synthetic4BookChap.csv'))
-    elif site_name == 'puechabon':
-        data = pd.read_csv(data_folder.joinpath('Bookchapter', 'Puechabon2008-2009.csv'))
-    elif site_name == 'SCOPE':
-        data = pd.read_csv(data_folder.joinpath('SCOPE', 'NNinput_SCOPE_US_Ha1_1314.csv'))
-    elif site_name == 'HF':
-        data = pd.read_csv(data_folder.joinpath('HF', 'hf004-01-final.csv'))
+    if path is None:
+        data_folder = pathlib.Path(__file__).parent.parent.parent.joinpath('data')
     else:
-        # There is the 2015 and 2020 dataset. We usually work with 2015.
-        superfolder_name = f'Fluxnet-{year}'
-        folder_name = f'FLX_{site_name}'
+        data_folder = pathlib.Path(path).expanduser()
 
-        files = data_folder.joinpath(superfolder_name, folder_name)
-        for file in files.glob('*'):
+    filename = None
+    for file in data_folder.glob('*'):
+        # Most sites have half-hourly data
+        if file.name.startswith(f'FLX_{site_name}_FLUXNET2015_FULLSET_HH'):
+            filename = file.name
+        # A few have hourly data
+        elif file.name.startswith(f'FLX_{site_name}_FLUXNET2015_FULLSET_HR'):
+            filename = file.name
+
+    if filename is None:
+        for file in data_folder.glob('*'):
             # Most sites have half-hourly data
-            if file.name.startswith(f'FLX_{site_name}_FLUXNET2015_FULLSET_HH'):
+            if file.name.find(site_name) != -1:
                 filename = file.name
-            # A few have hourly data
-            elif file.name.startswith(f'FLX_{site_name}_FLUXNET2015_FULLSET_HR'):
-                filename = file.name
-
-        # Write exception for when filename is None
-        data = pd.read_csv(files.joinpath(filename))
-        if add_ann:
-            file = f'{site_name}_ANN_partitioning.csv'
-            data_ann = pd.read_csv(data_folder.joinpath('ANNpartitioning',file))
-            data = pd.merge(data, data_ann, how='left', right_index=True, left_index=True)
-            data = data.rename({"GPPann": "GPP_ann", "RECOann": "RECO_ann"}, axis=1)
-            data["NEE_ann"] = -data["GPP_ann"] + data['RECO_ann']
-            data.loc[(data["GPP_ann"] == -9999), "NEE_ann"] = -9999
-        data['site'] = site_name
-    if files_path:
-        return data, files
-    else:
-        return data
+    
+    # Write exception for when filename is None
+    data = pd.read_csv(data_folder.joinpath(filename))
+    data['site'] = site_name
+    return data
 
 def unwrap_time(data):
     """
@@ -156,8 +182,8 @@ def wdefcum(data):
     """
     # TODO: Discuss. Is this a proper way to compute it and what does it mean.
     # TODO: Figure out what to do with naming conventions in scientific context.
-    P = data['P']
-    LE = data['LE']
+    P = data['P'].values
+    LE = data['LE'].values
     if 'P' in data.columns and 'LE' in data.columns:
         n = len(LE)
         # TODO: Figure out the meaning of the magic number here.
@@ -175,6 +201,86 @@ def wdefcum(data):
         CWD = None
     return CWD
 
+def EF_1(data):
+    """
+    Evaporative fraction (EF) is the ratio of latent heat flux LE to the sum of latent heat flux LE and sensible heat flux H.
+    Value is computed as a daily average. If there are enough measured data points only measured data is used, otherwise we use
+    the gapfilled data.
+
+    Args:
+        data (pd.DataFrame): Dataframe with flux data.
+
+    Returns:
+        df (pd.DataFrame): Dataframe with flux data including EF_dt_avg.
+    """
+    df = data.copy()
+    # If there are more than 100 points of original H OR LE data, use the original data
+    if (np.sum(df['LE_QC'] == 0) > 100) or (np.sum(df['H_QC'] == 0) > 100):
+        # Take df during the day, when both H and LE are available and H and F are positive
+        df_sub = df[(df['LE_QC'] == 0) & (df['H_QC'] == 0) & (df['NIGHT'] != 1) & (df['H'] > 0) & (df['LE'] > 0)]
+        # Compute EF
+        df_sub['EF'] = df_sub['LE'] / (df_sub['LE'] + df_sub['H'])
+        
+        df_EF = df_sub.groupby('doy')['EF'].mean().reset_index()
+        df_EF.columns = ["doy", "EF_dt_avg"]
+        df = pd.merge(df, df_EF, on='doy', how='left')
+        return df
+    # If there are fewer than 100 original H and LE df, use the gap-filled LE and H
+    else:
+        df_sub = df[(df['NIGHT'] != 1) & (df['H'] > 0) & (df['LE'] > 0)]
+        df_sub['EF'] = df_sub['LE'] / (df_sub['LE'] + df_sub['H'])
+        
+        df_EF = df_sub.groupby('doy')['EF'].mean().reset_index()
+        df_EF.columns = ["doy", "EF_dt_avg"]
+        df = pd.merge(df, df_EF, on='doy', how='left')
+        return df
+
+def EF_2(data):
+    """
+    Evaporative fraction (EF) is the ratio of latent heat flux LE to the sum of latent heat flux LE and sensible heat flux H.
+    Value is computed as a daily average. If there are enough measured data points only measured data is used, otherwise we use
+    the gapfilled data.
+
+    Args:
+        data (pd.DataFrame): Dataframe with flux data.
+
+    Returns:
+        df (pd.DataFrame): Dataframe with flux data including EF_dt_avg.
+    """
+    df=data.copy()
+    df_doy = pd.DataFrame({'doy': df['doy'].unique()})
+
+    df_sub = df[(df['LE_QC'] == 0) & (df['H_QC'] == 0) & (df['NIGHT'] != 1) & (df['H'] > 0) & (df['LE'] > 0)].copy()
+    df_sub['EF'] = df_sub['LE'] / (df_sub['LE'] + df_sub['H'])
+    df_EF = df_sub.groupby('doy')['EF'].mean().reset_index()
+    df_EF['count_0'] = df_sub.groupby('doy')['EF'].count().reset_index()['EF']
+    df_EF.columns = ["doy", "EF_dt_avg_0", "count_0"]
+    df_doy = pd.merge(df_doy, df_EF, on='doy', how='left')
+
+
+    df_sub = df[(df['LE_QC'] <= 1) & (df['H_QC'] <= 1) & (df['NIGHT'] != 1) & (df['H'] > 0) & (df['LE'] > 0)].copy()
+    df_sub['EF'] = df_sub['LE'] / (df_sub['LE'] + df_sub['H'])
+    df_EF = df_sub.groupby('doy')['EF'].mean().reset_index()
+    df_EF['count_1'] = df_sub.groupby('doy')['EF'].count().reset_index()['EF']
+    df_EF.columns = ["doy", "EF_dt_avg_1", "count_1"]
+    df_doy = pd.merge(df_doy, df_EF, on='doy', how='left')
+
+
+    df_sub = df[(df['NIGHT'] != 1) & (df['H'] > 0) & (df['LE'] > 0)].copy()
+    df_sub['EF'] = df_sub['LE'] / (df_sub['LE'] + df_sub['H'])
+    df_EF = df_sub.groupby('doy')['EF'].mean().reset_index()
+    df_EF['count_2'] = df_sub.groupby('doy')['EF'].count().reset_index()['EF']
+    df_EF.columns = ["doy", "EF_dt_avg_2", "count_2"]
+    df_doy = pd.merge(df_doy, df_EF, on='doy', how='left')
+
+    df_doy = df_doy.fillna(0)
+
+    df_doy['EF_QC'] = np.where(df_doy['count_0'] >= 3, 0, np.where(df_doy['count_1'] >= 3, 1, 2))
+    df_doy['EF_dt_avg'] = np.where(df_doy['EF_QC'] == 0, df_doy['EF_dt_avg_0'], np.where(df_doy['EF_QC'] == 1, df_doy['EF_dt_avg_1'], df_doy['EF_dt_avg_2']))
+
+    df = pd.merge(df, df_doy[['doy', 'EF_dt_avg', 'EF_QC']], on='doy', how='left')
+
+    return df
 
 def diffuse_to_direct_rad(data):
     """
@@ -190,16 +296,16 @@ def diffuse_to_direct_rad(data):
     """
     
     # SW_IN is not supposed to be larger than SW_IN_POT
-    SW_IN = data['SW_IN']
+    SW_IN = data['SW_IN'].copy()
     indices = data['SW_IN'] > data['SW_IN_POT']
-    SW_IN[indices] = data['SW_IN_POT'][indices]
+    SW_IN.loc[indices] = data.loc[indices,'SW_IN_POT']
     
     epsilon = 1e-10  # Prevent division by zero
     SW_ratio = 1 - data['SW_IN']/(data['SW_IN_POT']+epsilon)
     return SW_ratio
 
 
-def NEE_quality_masks(data):
+def NEE_quality_masks(data, quality_min):
     """
     Computes quality masks for evaluation depending on availability of measured NEE.
     The criterion are:
@@ -220,7 +326,7 @@ def NEE_quality_masks(data):
     df = data.copy()
 
     # Quality mask per datapoint
-    df['QM_halfhourly'] = df['NEE_QC'].apply(lambda x: 0 if x >= 1 else 1)
+    df['QM_halfhourly'] = df['NEE_QC'].apply(lambda x: 0 if x >= quality_min+1 else 1)
 
     # Quality mask per day
     daily_avg = df.groupby(['site', 'Year', 'doy'])['QM_halfhourly'].mean()
@@ -272,7 +378,7 @@ def daily_means(data, masked=True):
     return df
 
 
-def quality_check(data, variables, nn_qc=True):
+def quality_check(data, variables, nn_qc=False):
     """
     Introduce yearwise quality_flag on the data following the criterion applied by
     Tramontana.
@@ -363,7 +469,7 @@ def sw_pot_sm_diff(data):
         SW_POT_sm_diff (float64): smooth derivative of smooth potential incoming radiation
     """
 
-    SW_POT_sm = data['SW_POT_sm']
+    SW_POT_sm = data['SW_POT_sm'].values
     SW_POT_sm_diff = np.hstack((np.array(SW_POT_sm[1]-SW_POT_sm[0]),
                                 (np.roll(SW_POT_sm,-1) - SW_POT_sm)[1:]))
     SW_POT_sm_diff = moving_average(10000*SW_POT_sm_diff, 480)
@@ -413,7 +519,7 @@ def GPP_prox(data):
 
     Returns:
         df (pd.DataFrame): Copy of dataframe with proxies.
-    """    
+    """
     dt_avg = data[data['NIGHT'] == 0].groupby(['doy', 'Year'])['NEE'].mean()
     nt_avg = data[data['NIGHT'] == 1].groupby(['doy', 'Year'])['NEE'].mean()
     k = 1-data.groupby(['doy', 'Year'])['NIGHT'].mean()
@@ -421,8 +527,7 @@ def GPP_prox(data):
     data['NEE_nt_avg'] = data.apply(lambda x: nt_avg[(x['doy'], x['Year'])], axis=1)
     data['NEE_dt_avg'] = data.apply(lambda x: dt_avg[(x['doy'], x['Year'])], axis=1)
     data['k'] = data.apply(lambda x: k[(x['doy'], x['Year'])], axis=1)
-    return (data['NEE_dt_avg'] - data['NEE_nt_avg'])*data['k']
-
+    return (data['NEE_dt_avg'] - data['NEE_nt_avg'])*data['k'], data['NEE_nt_avg'], data['NEE_dt_avg']
 
 def normalize(data, var, norm_type='s', masked_normalization=True):
     """
@@ -503,7 +608,7 @@ def make_cyclic(x):
     return np.sin(x_norm), np.cos(x_norm)
 
 
-def check_available_variables(variables, columns):
+def check_available_variables(variables, columns, data):
     """
     Compares available variables with the desired ones and returns the
     available list.
@@ -525,8 +630,14 @@ def check_available_variables(variables, columns):
             suffix = None
         
         if var[:suffix] in columns:
-            variables_available.append(var)
+            nan_ratio = data[var[:suffix]].isna().sum()/len(data)
+            if nan_ratio > 0.5:
+                print(f"Variable {var} is {nan_ratio}% NaNs. Drop!")
+            else:
+                variables_available.append(var)        
         else:
             print(f"Variables {var[:suffix]} not in the dataset.")
-            
+    
+
+
     return variables_available

@@ -1,27 +1,32 @@
+import os
+import time
 from argparse import ArgumentParser
-from nneddyproc.utility.experiments import create_experiment_folder
-from nneddyproc.training.trainers import trainer_basic
-from nneddyproc.datasets.preprocessing import *
-from nneddyproc.datasets.dataloader import *
-from nneddyproc.models.models import *
-from nneddyproc.analysis.visualization import monthly_curves, taylor_plot
-import nneddyproc.analysis.postprocessing as post
+import random as orandom
+from pathlib import Path
+import pandas as pd
 
+#os.environ["TF_CPP_MIN_LOG_LEVEL"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "" # 0 1 7
+#os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
+#os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".60"
+
+import numpy as np
+
+import matplotlib.pyplot as plt
+import scipy.stats as stats
+
+from dml4fluxes.experiments import experiment, experiment_utils
+from dml4fluxes.analysis.visualization import monthly_curves, taylor_plot
+from dml4fluxes.datasets.preprocessing import *
+import dml4fluxes.analysis.postprocessing as post
 
 def main(args):
     
     ################ Define the experiment  ################
-    # Model
-    model_config = {
-                    'nn_lue': args.hidden_layer*[args.hidden_nodes],   # hidden layers without input
-                    'nn_reco': args.hidden_layer*[args.hidden_nodes],
-                    'ensemble_size': args.ensemble_size,
-                    'nonlinearity': 'tanh'
-                }
-    
     # Data
-    dataset_config = {'var_lue': ['SW_IN', 'SW_IN_POT', 'VPD', 'TA', 'SWC_1', 'WS', 'SW_POT_diff', 'SW_POT_sm','SW_POT_sm_diff', 'WD_cos', 'WD_sin', 'GPP_prox'],
-                    'var_reco': ['TA', 'TS_1', 'SWC_1', 'WS', 'WD_cos', 'WD_sin', 'doy_sin', 'doy_cos', 'NEE_nt_avg','P_ERA', 'EF_dt_avg'], #, 
+    dataset_config = {'X': ['VPD', 'TA', 'SWC_1', 'doy_sin','doy_cos'],
+                    'W': [],
+                    'var_reco': ['TA', 'TS_1', 'SWC_1', 'WS', 'WD_cos', 'WD_sin', 'doy_sin', 'doy_cos', 'NEE_nt_avg'], #, 'P_ERA', 'EF_dt_avg'
                     'test_portion': 0.3,
                     'batch_size': args.batch_size,
                     'seed': args.seed,
@@ -29,114 +34,186 @@ def main(args):
                     'year': args.year,
                     'quality_min': args.quality_min,
                     'target': 'NEE',
+                    
+                    ### deprecated and options, change for future
+                    'site_name': args.site,
+                    'syn': False,
+                    'version': 'simple',
+                    'Q10':1.5,
+                    'relnoise':0,
+                    'pre_computed':False,
+                    'transform_T':True,
+                    'month_wise': False,
+                    'moving_window':[3, 5],
+                    'delta': 'heuristic8',
+                    'years': [args.year], # 'all',
+                    'test_scenario': True,
+                    'RMSE': True,
+                    'alternative_fluxes': None,
+                    'alternative_treatment': None, #"SW_IN_POT",
+                    'good_years_only': True,
+                    'store_parameter': True,
+                    
+                    
     }
     
-    # Trainer
-    trainer_config = { 'seed': args.seed,
-                        'weight_decay': 0,
-                        'patience': 7,
-                        'lr_init': 0.001,
-                        'max_iter': 400,
-                        'tolerance': 1e-4,
-                        'min_lr': 1e-7,
-                        'lr_decay_factor': 0.5,
-                        'lr_decay_steps': 7,
-                        'track_training': True,
-                        'device': 'cpu',
-                        }
+    
+    # Model
+    model_y_config = dict(model = 'GradientBoostingRegressor',
+                        min_samples_split = 5,
+                        min_samples_leaf = 40,
+                        max_depth=1,
+                        n_estimators=300,
+                        n_iter_no_change=5,
+                        validation_fraction=0.3,
+			            tol=0.01,
+                        )
+
+    model_t_config = dict(model = 'GradientBoostingRegressor',
+                        min_samples_split = 5,
+                        min_samples_leaf = 40,
+                        max_depth=1,
+                        n_estimators=300,
+                        n_iter_no_change=5,
+                        validation_fraction=0.3,
+			            tol=0.01,
+                        )
+    model_lue_config = dict(model = 'GradientBoostingRegressor',
+                        min_samples_split = 5,
+                        min_samples_leaf = 40,
+                        max_depth=1,
+                        n_estimators=300,
+                        n_iter_no_change=10,
+                        validation_fraction=0.3,
+			            tol=0.0001,
+                        )
+    
+    model_reco_config = dict(
+                    model = 'EnsembleCustomJNN',
+                    model_config = {"layers": [len(dataset_config['var_reco']),15,15,1],
+                                    "final_nonlin": True,
+                                    "dropout_p": 0,
+                                    "ensemble_size": 1},
+                    trainer_config = {"weight_decay": 0.3, "iterations": 20000, "split": 1.0},
+                    seed = 1
+                    )
+    
+    dml_config = dict(cv=10)
+    
+    model_config = dict(y = model_y_config,
+                    t = model_t_config,
+                    lue= model_lue_config,
+                    reco = model_reco_config,
+                    dml = dml_config)
     
     ################ Save the experiment setup  ################    
-    experiment_dict = {'model_config': model_config, 'data_config': dataset_config, 'trainer_config': trainer_config}
+    experiment_dict = {'model_config': model_config, 'data_config': dataset_config}
 
     #### Experiment ####
     print(f"Partitioning site-year: {args.site}-{args.year}")
 
     #### Create the experiment folder ####
     print("Creating the experiment folder...")
-    experiment_path = create_experiment_folder(f"output_{args.site}_{args.year}", experiment_dict, path=args.results_folder)
+    exp = experiment.FluxPartDML(model_config, dataset_config)
+    experiment_path = exp.new(args.site, args.year, experiment_dict, results_folder=args.results_folder)
+    exp.prepare_data(path=args.data_folder)
 
-    #### Prepare the data here ####
-    print("Data processing in progress...")
-    data = prepare_data(dataset_config, path=args.data_folder)
-    
-    
     #### Loop over the ensemble members ####
     fluxes = pd.DataFrame(columns=['NEE_QC'])
-    fluxes['NEE_QC'] = data['NEE_QC']
-    fluxes.index = data.index
+    fluxes['NEE_QC'] = exp.data_all['NEE_QC']
+    fluxes.index = exp.data_all.index
     
     for i in range(args.ensemble_size):
+
         print(f"Start training model {i+1}/{args.ensemble_size}...")
-        # sample a new seed
         dataset_config['seed'] = args.seed + i
-        trainer_config['seed'] = args.seed + i
-        
-        train_dataloader, val_dataloader, scalers, available_vars = build_data_loaders(dataset_config, data)
-        dataloaders = dict(
-            train = train_dataloader,
-            validation = val_dataloader
-        )
-
+        exp.model_config['reco']['seed'] = args.seed + i
         #### Run the actual experiment here ####
-        model = LUEModel(*available_vars, model_config, scalers)
-        outputs, model  = trainer_basic(model, dataloaders, **trainer_config)
-
-        #### Create some analysis plots here ####
-        X_lue = torch.tensor(data[available_vars[0]].values)
-        SW_IN = torch.tensor(data['SW_IN'].values.reshape(-1,1))
-        X_reco = torch.tensor(data[available_vars[1]].values)
-
-        model = model.to('cpu')
-        gpp, reco, nee, lue = model.predict(X_lue, SW_IN, X_reco)
+        exp.fit_models()
     
         # store gpp, reco, nee in a csv file with quality flag
-        fluxes[f'NEE_{i}'] = nee[:,0]
-        fluxes[f'GPP_{i}'] = gpp[:,0]
-        fluxes[f'RECO_{i}'] = reco[:,0]
-        fluxes[f'LUE_{i}'] = lue[:,0]
-    
+        fluxes[f'NEE_{i}'] = exp.data_all['NEE_DML']
+        fluxes[f'NEE_fit_{i}'] = exp.data_all['NEE_DML_fit']
+        fluxes[f'GPP_{i}'] = exp.data_all['GPP_DML']
+        fluxes[f'RECO_di_{i}'] = exp.data_all['RECO_DML_di']
+        fluxes[f'RECO_res_{i}'] = exp.data_all['RECO_DML_res']
+        fluxes[f'RECO_fit_{i}'] = exp.data_all['RECO_DML_fit']
+        fluxes[f'LUE_{i}'] = exp.data_all['LUE_DML']
+        
         #store fluxes in the results folder
         fluxes.to_csv(experiment_path.joinpath("fluxes.csv"))
         print(f"Finish training model {i+1}/{args.ensemble_size}...")
         
-        outputs_df = pd.DataFrame.from_dict(outputs)
-        outputs_df.to_csv(experiment_path.joinpath(f"outputs_{i}.csv"))
+        #outputs_df = pd.DataFrame.from_dict(outputs)
+        #outputs_df.to_csv(experiment_path.joinpath(f"outputs_{i}.csv"))
         
     #store outputs dict also in a csv file\
+    # reread csv file
+    fluxes = pd.read_csv(experiment_path.joinpath("fluxes.csv"), index_col=0)
+    
     print(f"Generate plots of fluxes")
     
     NEE = [fluxes[f'NEE_{i}'] for i in range(args.ensemble_size)]
+    NEE_fit = [fluxes[f'NEE_fit_{i}'] for i in range(args.ensemble_size)]
     GPP = [fluxes[f'GPP_{i}'] for i in range(args.ensemble_size)]
-    RECO = [fluxes[f'RECO_{i}'] for i in range(args.ensemble_size)]
+    RECO_fit = [fluxes[f'RECO_fit_{i}'] for i in range(args.ensemble_size)]
+    # rename columns in RECO_fit to RECO_0, RECO_1, ...
+    RECO_di = [fluxes[f'RECO_di_{i}'] for i in range(args.ensemble_size)]
+    RECO_res = [fluxes[f'RECO_res_{i}'] for i in range(args.ensemble_size)]
     LUE = [fluxes[f'LUE_{i}'] for i in range(args.ensemble_size)]
     
     # turn list of arrays into a dataframe
     NEE = pd.DataFrame(NEE).T
+    NEE_fit = pd.DataFrame(NEE_fit).T
+    NEE_fit.columns = [f'NEE_{i}' for i in range(args.ensemble_size)]
     GPP = pd.DataFrame(GPP).T
-    RECO = pd.DataFrame(RECO).T
+    RECO_fit = pd.DataFrame(RECO_fit).T
+    RECO_fit.columns = [f'RECO_{i}' for i in range(args.ensemble_size)]
+    RECO_di = pd.DataFrame(RECO_di).T
+    RECO_di.columns = [f'RECO_{i}' for i in range(args.ensemble_size)]
+    RECO_res = pd.DataFrame(RECO_res).T
+    RECO_res.columns = [f'RECO_{i}' for i in range(args.ensemble_size)]
     LUE = pd.DataFrame(LUE).T
     
-    GPP, RECO, NEE, LUE = post.prepare_data(GPP, RECO, NEE, LUE, ensemble_size=args.ensemble_size)
+    GPP, RECO_fit, NEE_fit, LUE = post.prepare_data(GPP, RECO_fit, NEE_fit, LUE, ensemble_size=args.ensemble_size)
+    GPP, RECO_di, NEE, LUE = post.prepare_data(GPP, RECO_di, NEE, LUE, ensemble_size=args.ensemble_size)
+    GPP, RECO_res, NEE, LUE = post.prepare_data(GPP, RECO_res, NEE, LUE, ensemble_size=args.ensemble_size)
+    
     NEE['NEE_QC'] = fluxes['NEE_QC']
-    NEE['NEE_DT'] = -data['GPP_DT'] + data['RECO_DT']
-    NEE['NEE_NT']  = -data['GPP_NT'] + data['RECO_NT']
+    NEE['NEE_DT'] = -exp.data_all['GPP_DT'] + exp.data_all['RECO_DT']
+    NEE['NEE_NT']  = -exp.data_all['GPP_NT'] + exp.data_all['RECO_NT']
+
+    NEE_fit['NEE_QC'] = fluxes['NEE_QC']
+    NEE_fit['NEE_DT'] = -exp.data_all['GPP_DT'] + exp.data_all['RECO_DT']
+    NEE_fit['NEE_NT']  = -exp.data_all['GPP_NT'] + exp.data_all['RECO_NT']
 
     GPP['NEE_QC'] = fluxes['NEE_QC']
-    GPP['GPP_DT'] = data['GPP_DT']
-    GPP['GPP_NT']  = data['GPP_NT']
+    GPP['GPP_DT'] = exp.data_all['GPP_DT']
+    GPP['GPP_NT']  = exp.data_all['GPP_NT']
     
-    RECO['NEE_QC'] = fluxes['NEE_QC']
-    RECO['RECO_DT'] = data['RECO_DT']
-    RECO['RECO_NT']  = data['RECO_NT']
+    RECO_fit['NEE_QC'] = fluxes['NEE_QC']
+    RECO_fit['RECO_DT'] = exp.data_all['RECO_DT']
+    RECO_fit['RECO_NT']  = exp.data_all['RECO_NT']
 
-    # plot the fluxes
-    monthly_curves('NEE', NEE, results_path=experiment_path)
+    RECO_di['NEE_QC'] = fluxes['NEE_QC']
+    RECO_di['RECO_DT'] = exp.data_all['RECO_DT']
+    RECO_di['RECO_NT']  = exp.data_all['RECO_NT']
+
+    RECO_res['NEE_QC'] = fluxes['NEE_QC']
+    RECO_res['RECO_DT'] = exp.data_all['RECO_DT']
+    RECO_res['RECO_NT']  = exp.data_all['RECO_NT']
+
+    monthly_curves('NEE', NEE, results_path=experiment_path, suffix='_di')
+    monthly_curves('NEE', NEE_fit, results_path=experiment_path, suffix='_fit')
     monthly_curves('GPP', GPP, results_path=experiment_path)
-    monthly_curves('RECO', RECO, results_path=experiment_path)
+    monthly_curves('RECO', RECO_fit, results_path=experiment_path, suffix='_fit')
+    monthly_curves('RECO', RECO_di, results_path=experiment_path, suffix='_di')
+    monthly_curves('RECO', RECO_res, results_path=experiment_path, suffix='_res')
     #monthly_curves('LUE', LUE, results_path=experiment_path)
-    
-    # Make taylorplots
-    taylor_plot(NEE, GPP, RECO, ensemble_size=args.ensemble_size, results_path=experiment_path)
+
+    taylor_plot(NEE, GPP, RECO_di, ensemble_size=args.ensemble_size, results_path=experiment_path, suffix='_di')
+    taylor_plot(NEE_fit, GPP, RECO_fit, ensemble_size=args.ensemble_size, results_path=experiment_path, suffix='_fit')
+    taylor_plot(NEE, GPP, RECO_res, ensemble_size=args.ensemble_size, results_path=experiment_path, suffix='_res')
 
 
 if __name__ == "__main__":

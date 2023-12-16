@@ -7,21 +7,30 @@ from doubleml import DoubleMLData
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, StackingRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.svm import SVR, LinearSVR
-from sklearn.linear_model import SGDRegressor
+from sklearn.linear_model import SGDRegressor, LinearRegression, LogisticRegression
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.tree import DecisionTreeRegressor
+
 from sklearn.base import BaseEstimator, RegressorMixin
+
 from copy import deepcopy
 from dml4fluxes.experiments.utility import transform_t
+#sys.path.append('../../bayes-q10')
+from src.models.models import EnsembleCustomJNN
+from econml.utilities import WeightedModelWrapper
+
 
 class dml_fluxes():
-    def __init__(self, model_y_config, model_t_config, model_final_config, dml_config):
+    def __init__(self, model_y_config, model_t_config, model_final_config, dml_config, reco_config=None):
 
         self.dml_config = dml_config
         self.model_t_config = model_t_config
         self.model_y_config = model_y_config
         self.model_final_config = model_final_config
         self.model_y_name = model_y_config['model']
-        
+        self.reco_config = reco_config
+                
         self.est = None
         model_y = getattr(sys.modules[__name__], model_y_config['model'])
         config = model_y_config.copy()
@@ -36,10 +45,17 @@ class dml_fluxes():
         model_final = getattr(sys.modules[__name__], model_final_config['model'])
         config = model_final_config.copy()
         del config['model']
-        self.model_final = model_final(**config)
+        self.model_final = WeightedModelWrapper(model_final(**config))
+
+        if self.reco_config:
+            self.reco_name = reco_config['model']
+            model_reco = getattr(sys.modules[__name__], reco_config['model'])
+            config = reco_config.copy()
+            del config['model']
+            self.model_reco = model_reco(**config)
     
     
-    def fit(self, Y, X, T, W=None):
+    def fit(self, Y, X, T, W=None, X_reco=None):
         #TODO: Build in model selection
         #TODO: Way to go is probably: Hand over test set. Run several NonParamDML model
         #TODO: And score them on the test set. Take the best one. Also try out the
@@ -51,6 +67,13 @@ class dml_fluxes():
         
         self.est.fit(Y=Y, X=X, W=W, T=T, cache_values=True)
         self.gpp, self.reco, self.reco_res, self.nee, self.t, self.lue = self.get_estimators()
+        
+        if self.reco_config:
+            # Compute the residuals on the training set
+            res = Y + self.gpp(X, T)
+            self.model_reco.fit(X_reco, res)
+            
+                        
         
     def get_estimators(self):
         def gpp(x, t):
