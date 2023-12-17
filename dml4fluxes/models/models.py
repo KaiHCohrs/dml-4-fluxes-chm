@@ -17,7 +17,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from copy import deepcopy
 from dml4fluxes.experiments.utility import transform_t
 #sys.path.append('../../bayes-q10')
-from src.models.models import EnsembleCustomJNN
+from src.models.NN_regressor import EnsembleCustomJNN
 from econml.utilities import WeightedModelWrapper
 
 
