@@ -1,7 +1,5 @@
 """File containing a mapping of old to new column names and relevant variables."""
 
-"""File containing a mapping of old to new column names and relevant variables."""
-
 mappings = {'TA_F': 'TA',  #Fluxnet mappings
             'TA_F_QC': 'TA_QC',
             'SW_IN_F': 'SW_IN',

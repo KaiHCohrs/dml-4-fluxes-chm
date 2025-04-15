@@ -14,7 +14,7 @@ import json
 
 import pandas as pd
 from pathlib import Path
-from nneddyproc.analysis.utils import unfold_time
+from dml4fluxes.analysis.utils import unfold_time
 
 def prepare_data(GPP, RECO, NEE, LUE=None, ensemble_size=100):
     GPP = unfold_time(GPP)
@@ -349,7 +349,6 @@ def load_partition(experiment_name, site_name, year=2015, old=False, syn=False, 
     
     data = unwrap_time(data)
     data = data.set_index('DateTime')
-    #data['DateTime'] = data.index
     data = standardize_column_names(data)
     
     folder_name = path.name
@@ -391,8 +390,7 @@ def evaluate(data, syn=True, yearly=True, part='all', method='orth'):
         results_MSE = pd.DataFrame(columns=['Year','RECO', 'RECO_res', 'GPP', 'NEE', 'NEE_clean', 'QC'])
 
         for year in data['Year'].unique():
-            yearly_indices = indices & (data['Year']==year) & (~np.isnan(data[f'RECO_{method}'])) & (~np.isnan(data[f'GPP_{method}']))
-            #subdata = partdata            
+            yearly_indices = indices & (data['Year']==year) & (~np.isnan(data[f'RECO_{method}'])) & (~np.isnan(data[f'GPP_{method}']))        
             
             R2 = dict(Year = year,
                                 RECO = r2_score(data.loc[yearly_indices, 'RECO_syn'], data.loc[yearly_indices, f'RECO_{method}']),
@@ -421,7 +419,6 @@ def evaluate(data, syn=True, yearly=True, part='all', method='orth'):
         condensed['MSE_med'] = results_MSE.quantile(0.5)
         condensed['MSE_25'] = results_MSE.quantile(0.25)
         condensed['MSE_75'] = results_MSE.quantile(0.75)
-        #condensed = condensed.drop(['Year', 'QC'])
         
         return results_R2, results_MSE, condensed
 
@@ -562,12 +559,6 @@ def full_analysis(csv_path, visualization=True):
     list_of_dataframes = []
 
     for df in pd.read_csv('/home/kaicohrs/Repositories/results/DML_sota/analysis_data.csv', chunksize=chunksize):
-        # process your data frame here
-        # then add the current data frame into the list
-        #df = df.loc[(df['site']=='US-SRG'),:]
-        #df = df.loc[np.isin(df['site'],only_one_year),:]
-        #df = df.loc[(df['quality_mask']!=0),:]
-        #df = df.loc[(df['MeasurementNEE_mask']!=0),:]
         df = df[['doy', 'Year', 'RECO_ann', 'RECO_DT', 'quality_mask',
                 'Month', 'site', 'RECO_orth', 'NEE_orth', 'Time', 'NEE_ann', 'GPP_ann', 'GPP_DT', 
                 'MeasurementNEE_mask', 'NEE',

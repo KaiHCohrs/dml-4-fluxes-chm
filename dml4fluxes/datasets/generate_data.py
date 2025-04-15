@@ -1,13 +1,12 @@
 """ Functions for generating synthetic datasets """
-import os
 import random
 
 import pandas as pd
 import numpy as np
 from pathlib import Path
 
-import dml4fluxes.datasets.relevant_variables as relevant_variables
 from ..experiments.utility import get_available_sites
+from .preprocessing import *
 
 
 def synthetic_dataset(data, Q10, relnoise, version='simple', pre_computed=False, site_name=None):
@@ -66,7 +65,6 @@ def synthetic_dataset(data, Q10, relnoise, version='simple', pre_computed=False,
         TA = data['TA']
         VPD = data['VPD']
         
-        #if version=='simple':
         RUE_syn = 0.5 * np.exp(-(0.1*(TA-20))**2) * np.minimum(1, np.exp(-0.1 * (VPD-10)))
         if version == 'medium1.0':
             kw = -0.11
@@ -88,7 +86,6 @@ def synthetic_dataset(data, Q10, relnoise, version='simple', pre_computed=False,
             
             fVPD = np.exp(-0.1 * (VPD-10))
             fTA = ((np.exp(-(0.1*(TA-20))**2)))
-            #fTA = ((TA - TA.min())*(TA - TA.max()))/((TA - TA.min())*(TA - TA.max())-(TA - 20)**2)
             RUE_syn = 0.5 * fTA * fTS * np.minimum(fVPD, fW).squeeze()
         
         GPP_syn = RUE_syn * SW_IN / 12.011
@@ -158,9 +155,6 @@ def prepare_std_flx_part(site, year=2015, version='simple', Q10=1.5):
     data = standardize_column_names(data)
     
     data_new = data[['Year', 'TA', 'doy', 'Time', 'VPD', 'SW_IN', 'simple', f'GPP_{version}_{str(Q10)}', f'RECO_{version}_{str(Q10)}']+[col for col in data.columns if col.startswith(f'NEE_{version}')]].copy()
-    #data.drop('Unnamed: 0', axis=1, inplace=True)
-    #data.drop(['VPD_n', 'SW_ratio', 'RECO_NT', 'RECO_DT', 'RECO_orth_res', 'code', 'GPP_NT', 'RECO_orth', 'site', 'Month', 'TA_n', 'wdefcum', 'LUE_orth', 'GPP_DT', 'NEE_orth', 'NIGHT'], axis=1, inplace=True)
-    #data.drop('GPP_orth', axis=1, inplace=True)
     data_new['Hour'] = data_new.apply(lambda x: time_to_dec(x['Time']), axis=1)
     data_new.drop('Time', axis=1, inplace=True)
     data_new.rename(columns={'doy':'DoY', 'TA': 'Tair', 'SW_IN':'Rg'}, inplace=True)

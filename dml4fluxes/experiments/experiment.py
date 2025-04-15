@@ -1,28 +1,8 @@
-import os
-from datetime import date
-import itertools
-from os import listdir
-import json
-from re import L
-import pathlib
-
-import numpy as np
-import pandas as pd
-
-import shutil
-import dml4fluxes.datasets.relevant_variables as relevant_variables
-
-from dml4fluxes.datasets.preprocessing import load_data, unwrap_time, standardize_column_names,\
-                                                sw_pot_sm, sw_pot_sm_diff,\
-                                                diffuse_to_direct_rad, NEE_quality_masks,\
-                                                quality_check, GPP_prox,\
-                                                normalize, wdefcum, check_available_variables,\
-                                                make_cyclic, sw_pot_diff, prepare_data
-from dml4fluxes.datasets.generate_data import synthetic_dataset
-                                                
-from dml4fluxes.analysis.postprocessing import evaluate, timely_averages, condense
+from dml4fluxes.datasets.preprocessing import quality_check, prepare_data, \
+                                                normalize, check_available_variables
 from dml4fluxes.models import models
-from .utility import get_available_sites, get_igbp_of_site, transform_t, JSONEncoder, create_experiment_folder
+from .utility import transform_t, create_experiment_folder
+
 
 class FluxPartDML():
     
@@ -32,7 +12,7 @@ class FluxPartDML():
         self.model_config = model_config
                 
     def new(self, site, year, experiment_dict, results_folder):
-        #Start a new experiment.
+        # Start a new experiment
         self.PATH = create_experiment_folder(f"output_{site}_{year}", experiment_dict, path=results_folder)
         return self.PATH
 
@@ -56,7 +36,7 @@ class FluxPartDML():
         self.RECO_var = check_available_variables(self.dataset_config['var_reco'], self.data.columns, self.data)
         self.model_config['reco']['model_config']['layers'][0] = len(self.RECO_var)
 
-        # Generate mask for quality of all data to be used.
+        # Generate mask for quality of all data to be used
         self.data['QC'] = quality_check(self.data, self.X_var + self.W_var + ['SW_IN'])
         
         # Filter by quality mask
@@ -68,20 +48,17 @@ class FluxPartDML():
         # Print ratio of filtered data
         print(f'Ratio of filtered data: {len(self.data)/N}')
         
-        # Or previous year for the last one.
+        # Normalize variables
         for var in self.X_var + self.W_var + self.RECO_var + ['SW_IN']:
             if var.endswith('_n') or var.endswith('_s'):
                 self.data = normalize(self.data, var[:-2], norm_type=var[-1])  
-            else:
-                pass
 
     def fit_models(self):
         # Run the fitting and partitioning
         self.fitted_models = []
         if self.dataset_config['syn']:
             self.data['NEE_QC'] = 0
-            #TODO: Not sure if relevant
-            self.data['QC']=0
+            self.data['QC'] = 0
 
         self.data['T'] = self.data['SW_IN']
         self.data['GPP_DML'] = 0
@@ -93,20 +70,19 @@ class FluxPartDML():
         self.data.loc[:, 'GPP_DML'] = None
         self.data.loc[:, 'RECO_DML'] = None
         self.data.loc[:, 'RECO_DML_res'] = None
-        self.data.loc[:, 'NEE_DML'] =  None
+        self.data.loc[:, 'NEE_DML'] = None
         self.data.loc[:, 'T_DML'] = None
         self.data.loc[:, 'LUE_DML'] = None
                 
-        mask = (self.data['NEE_QC']==0)             
+        mask = (self.data['NEE_QC'] == 0)             
         target = 'NEE'
 
         self.data['T'], parameter = transform_t(x=self.data['SW_IN'],
-                                                    delta=self.dataset_config['delta'],
-                                                    data=self.data,
-                                                    month_wise=self.dataset_config['month_wise'],
-                                                    moving_window=self.dataset_config['moving_window'],
-                                                    target = target,
-                                                    )
+                                              delta=self.dataset_config['delta'],
+                                              data=self.data,
+                                              month_wise=self.dataset_config['month_wise'],
+                                              moving_window=self.dataset_config['moving_window'],
+                                              target=target)
         self.parameter = parameter
         self.T = self.data.loc[mask, 'T'].values
         self.X = self.data.loc[mask, self.X_var].values
@@ -127,9 +103,8 @@ class FluxPartDML():
                                     self.model_config['t'],
                                     self.model_config['lue'],
                                     self.model_config['dml'],
-                                    self.model_config['reco']
-                                    )
-        self.dml.fit(self.Y,self.X,self.T,self.W, self.X_reco)
+                                    self.model_config['reco'])
+        self.dml.fit(self.Y, self.X, self.T, self.W, self.X_reco)
             
         self.dml.score_train = self.dml.get_score(self.X, self.T, self.Y, self.W)
 
@@ -140,11 +115,11 @@ class FluxPartDML():
         self.fitted_models.append(self.dml)
 
         self.data_all['T'], alphas, betas = transform_t(x=self.data_all['SW_IN'],
-                                                    delta=self.dataset_config['delta'],
-                                                    data=self.data_all,
-                                                    month_wise=self.dataset_config['month_wise'],
-                                                    moving_window=self.dataset_config['moving_window'],
-                                                    parameter = parameter)
+                                                       delta=self.dataset_config['delta'],
+                                                       data=self.data_all,
+                                                       month_wise=self.dataset_config['month_wise'],
+                                                       moving_window=self.dataset_config['moving_window'],
+                                                       parameter=parameter)
         
         self.data_all = self.data_all.dropna(subset=['T']+self.X_var+self.W_var+['SW_IN'], how='any')
         T = self.data_all['T'].values
@@ -166,7 +141,6 @@ class FluxPartDML():
             X_reco = None
         else:
             X_reco = self.data_all[self.RECO_var].values
-
 
         self.data_all['GPP_DML'] = self.dml.gpp(X, T)
         self.data_all['RECO_DML_di'] = self.dml.reco(X, T, W)

@@ -1,121 +1,131 @@
 from argparse import ArgumentParser
 import pandas as pd
+import pathlib
 
 from dml4fluxes.experiments import experiment
 from dml4fluxes.datasets.preprocessing import *
 
 def main(args):
-    
-    ################ Define the experiment  ################
+    # Define the experiment
     # Data
-    dataset_config = {'X': ['VPD', 'TA', 'SWC_1', 'doy_sin','doy_cos'],
-                    'W': [],
-                    'var_reco': ['TA', 'TS_1', 'SWC_1', 'WS', 'WD_cos', 'WD_sin', 'doy_sin', 'doy_cos', 'NEE_nt_avg'], #, 'P_ERA', 'EF_dt_avg'
-                    'test_portion': 0.3,
-                    'batch_size': args.batch_size,
-                    'seed': args.seed,
-                    'site': args.site,
-                    'year': args.year,
-                    'quality_min': args.quality_min,
-                    'target': 'NEE',
-                    
-                    ### deprecated and options, change for future
-                    'site_name': args.site,
-                    'syn': False,
-                    'version': 'simple',
-                    'Q10':1.5,
-                    'relnoise':0,
-                    'pre_computed':False,
-                    'transform_T':True,
-                    'month_wise': False,
-                    'moving_window':[3, 5],
-                    'delta': 'heuristic8',
-                    'years': [args.year], # 'all',
-                    'test_scenario': True,
-                    'RMSE': True,
-                    'alternative_fluxes': None,
-                    'alternative_treatment': None, #"SW_IN_POT",
-                    'good_years_only': True,
-                    'store_parameter': True,
-                    
-                    
+    dataset_config = {
+        'X': ['VPD', 'TA', 'SWC_1', 'doy_sin', 'doy_cos'],
+        'W': [],
+        'var_reco': ['TA', 'TS_1', 'SWC_1', 'WS', 'WD_cos', 'WD_sin', 'doy_sin', 'doy_cos', 'NEE_nt_avg'],
+        'test_portion': 0.3,
+        'batch_size': args.batch_size,
+        'seed': args.seed,
+        'site': args.site,
+        'year': args.year,
+        'quality_min': args.quality_min,
+        'target': 'NEE',
+        
+        # Options for experimenting
+        'site_name': args.site,
+        'syn': False,
+        'version': 'simple',
+        'Q10': 1.5,
+        'relnoise': 0,
+        'pre_computed': False,
+        'transform_T': True,
+        'month_wise': False,
+        'moving_window': [3, 5],
+        'delta': 'heuristic8',
+        'years': [args.year],
+        'test_scenario': True,
+        'RMSE': True,
+        'alternative_fluxes': None,
+        'alternative_treatment': None,
+        'good_years_only': True,
+        'store_parameter': True,
     }
     
-    
     # Model
-    model_y_config = dict(model = 'GradientBoostingRegressor',
-                        min_samples_split = 5,
-                        min_samples_leaf = 40,
-                        max_depth=1,
-                        n_estimators=300,
-                        n_iter_no_change=5,
-                        validation_fraction=0.3,
-			            tol=0.01,
-                        )
+    model_y_config = {
+        'model': 'GradientBoostingRegressor',
+        'min_samples_split': 5,
+        'min_samples_leaf': 40,
+        'max_depth': 1,
+        'n_estimators': 300,
+        'n_iter_no_change': 5,
+        'validation_fraction': 0.3,
+        'tol': 0.01,
+    }
 
-    model_t_config = dict(model = 'GradientBoostingRegressor',
-                        min_samples_split = 5,
-                        min_samples_leaf = 40,
-                        max_depth=1,
-                        n_estimators=300,
-                        n_iter_no_change=5,
-                        validation_fraction=0.3,
-			            tol=0.01,
-                        )
-    model_lue_config = dict(model = 'GradientBoostingRegressor',
-                        min_samples_split = 5,
-                        min_samples_leaf = 40,
-                        max_depth=1,
-                        n_estimators=300,
-                        n_iter_no_change=10,
-                        validation_fraction=0.3,
-			            tol=0.0001,
-                        )
+    model_t_config = {
+        'model': 'GradientBoostingRegressor',
+        'min_samples_split': 5,
+        'min_samples_leaf': 40,
+        'max_depth': 1,
+        'n_estimators': 300,
+        'n_iter_no_change': 5,
+        'validation_fraction': 0.3,
+        'tol': 0.01,
+    }
     
-    model_reco_config = dict(
-                    model = 'EnsembleCustomJNN',
-                    model_config = {"layers": [len(dataset_config['var_reco']),15,15,1],
-                                    "final_nonlin": True,
-                                    "dropout_p": 0,
-                                    "ensemble_size": 1},
-                    trainer_config = {"weight_decay": 0.3, "iterations": 20000, "split": 1.0},
-                    seed = 1
-                    )
+    model_lue_config = {
+        'model': 'GradientBoostingRegressor',
+        'min_samples_split': 5,
+        'min_samples_leaf': 40,
+        'max_depth': 1,
+        'n_estimators': 300,
+        'n_iter_no_change': 10,
+        'validation_fraction': 0.3,
+        'tol': 0.0001,
+    }
     
-    dml_config = dict(cv=10)
+    model_reco_config = {
+        'model': 'EnsembleCustomJNN',
+        'model_config': {
+            "layers": [len(dataset_config['var_reco']), 15, 15, 1],
+            "final_nonlin": True,
+            "dropout_p": 0,
+            "ensemble_size": 1
+        },
+        'trainer_config': {
+            "weight_decay": 0.3, 
+            "iterations": 20000, 
+            "split": 1.0
+        },
+        'seed': 1
+    }
     
-    model_config = dict(y = model_y_config,
-                    t = model_t_config,
-                    lue= model_lue_config,
-                    reco = model_reco_config,
-                    dml = dml_config)
+    dml_config = {'cv': 10}
     
-    ################ Save the experiment setup  ################    
+    model_config = {
+        'y': model_y_config,
+        't': model_t_config,
+        'lue': model_lue_config,
+        'reco': model_reco_config,
+        'dml': dml_config
+    }
+    
+    # Save the experiment setup
     experiment_dict = {'model_config': model_config, 'data_config': dataset_config}
 
-    #### Experiment ####
+    # Experiment
     print(f"Partitioning site-year: {args.site}-{args.year}")
 
-    #### Create the experiment folder ####
+    # Create the experiment folder
     print("Creating the experiment folder...")
     exp = experiment.FluxPartDML(model_config, dataset_config)
     experiment_path = exp.new(args.site, args.year, experiment_dict, results_folder=args.results_folder)
     exp.prepare_data(path=args.data_folder)
 
-    #### Loop over the ensemble members ####
+    # Loop over the ensemble members
     fluxes = pd.DataFrame(columns=['NEE_QC'])
     fluxes['NEE_QC'] = exp.data_all['NEE_QC']
     fluxes.index = exp.data_all.index
     
     for i in range(args.ensemble_size):
-
         print(f"Start training model {i+1}/{args.ensemble_size}...")
         dataset_config['seed'] = args.seed + i
         exp.model_config['reco']['seed'] = args.seed + i
-        #### Run the actual experiment here ####
+        
+        # Run the actual experiment
         exp.fit_models()
     
-        # store gpp, reco, nee in a csv file with quality flag
+        # Store fluxes in a csv file with quality flag
         fluxes[f'NEE_{i}'] = exp.data_all['NEE_DML']
         fluxes[f'NEE_fit_{i}'] = exp.data_all['NEE_DML_fit']
         fluxes[f'GPP_{i}'] = exp.data_all['GPP_DML']
@@ -124,15 +134,11 @@ def main(args):
         fluxes[f'RECO_fit_{i}'] = exp.data_all['RECO_DML_fit']
         fluxes[f'LUE_{i}'] = exp.data_all['LUE_DML']
         
-        #store fluxes in the results folder
+        # Store fluxes in the results folder
         fluxes.to_csv(experiment_path.joinpath("fluxes.csv"))
         print(f"Finish training model {i+1}/{args.ensemble_size}...")
-        
-        #outputs_df = pd.DataFrame.from_dict(outputs)
-        #outputs_df.to_csv(experiment_path.joinpath(f"outputs_{i}.csv"))
-        
-    #store outputs dict also in a csv file\
-    # reread csv file
+    
+    # Store outputs dict also in a csv file
     fluxes = pd.read_csv(experiment_path.joinpath("fluxes.csv"), index_col=0)
 
 

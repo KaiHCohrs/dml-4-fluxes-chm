@@ -1,5 +1,4 @@
 """Functions for preparing the fluxnet dataset."""
-import datetime
 import math
 import pathlib
 
@@ -35,17 +34,11 @@ def prepare_data(dataset_config, path=None):
     data['GPP_prox'], data['NEE_nt_avg'], data['NEE_dt_avg'] = GPP_prox(data)
     data['WD_sin'], data['WD_cos'] = WD_trans(data)
     data['SW_POT_diff'] = sw_pot_diff(data)
-    #data = EF_1(data)
     data = EF_2(data)
     data = data.set_index('DateTime')
     
     # Drop problematic rows
     data = data.replace(-9999, np.nan)
-
-    ## NN should normalize internally
-    ## dataloader has normalizing constants for the model
-    ## during training input data is already normalized and outputs not necessary
-    ## during prediction time apply normalizing constants before and after prediction
 
     return data[data['Year'] == year]
 
@@ -112,7 +105,6 @@ def unwrap_time(data):
     if 'datetime' in df.columns:
         df = df.rename(columns={'datetime': 'DateTime'})
     if 'TIMESTAMP_START' in df.columns:
-        # Choose the middle of the timewindow as reference
         df['DateTime'] = pd.to_datetime(df['TIMESTAMP_START']+15, format="%Y%m%d%H%M")
     if all(col in df.columns for col in ['Date', 'Time']):
         df['DateTime'] = df['Date'] + 'T' + df['Time']
@@ -180,13 +172,10 @@ def wdefcum(data):
     Returns:
         CWD (float64): cumulative water deficit
     """
-    # TODO: Discuss. Is this a proper way to compute it and what does it mean.
-    # TODO: Figure out what to do with naming conventions in scientific context.
     P = data['P'].values
     LE = data['LE'].values
     if 'P' in data.columns and 'LE' in data.columns:
         n = len(LE)
-        # TODO: Figure out the meaning of the magic number here.
         ET = LE / 2.45e6 * 1800
         CWD = np.zeros(n)
         CWD[1:] = np.NaN
@@ -407,8 +396,6 @@ def quality_check(data, variables, nn_qc=False):
                 if sum(data_year[var + '_QC'] == 0)/len(data_year) <= 0.8:
                     fail_count += 1
 
-        # TODO: Discuss. How can we make this fair when we use different data?
-        # If the data was not included in Tramontanas training we also throw it out
         if nn_qc:
             if sum(~np.isnan(data_year['RECO_ann'])) == 0:
                 fail_count += 1
@@ -490,7 +477,6 @@ def sw_pot_diff(data):
     SW_IN_POT = data['SW_IN_POT']
     SW_POT_diff = np.hstack((np.array(SW_IN_POT[1]-SW_IN_POT[0]),
                                 (np.roll(SW_IN_POT,-1) - SW_IN_POT)[1:]))
-    #SW_POT_diff = moving_average(10000*SW_POT_diff, 480)
     return SW_POT_diff
 
 
