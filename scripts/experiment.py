@@ -1,19 +1,10 @@
-import os
 import time
 from argparse import ArgumentParser
 import random as orandom
-from pathlib import Path
-import pandas as pd
-
-import numpy as np
-
-import matplotlib.pyplot as plt
-import scipy.stats as stats
-
-from dml4fluxes.experiments import experiment, experiment_utils
 from dml4fluxes.analysis.visualization import *
 from dml4fluxes.datasets.preprocessing import *
 from dml4fluxes.analysis.postprocessing import *
+from dml4fluxes.experiments import experiment
 
 
 def main(parser: ArgumentParser = None, **kwargs):
@@ -35,9 +26,6 @@ def main(parser: ArgumentParser = None, **kwargs):
         setattr(args, k, v)
     
     print('>>> Starting experiment.')
-    
-    #results_path = Path(__file__).parent.parent.joinpath('results')
-    #csv_name = f"bayesQ10_{args.samples}_{args.method}_{args.ml}_{dropout}_{args.number}.csv"
 
     if args.X == 1:
         X = ['VPD', 'TA', 'doy_sin','doy_cos']
@@ -68,13 +56,13 @@ def main(parser: ArgumentParser = None, **kwargs):
                 month_wise= False,
                 moving_window=[3, 5],
                 delta = 'heuristic8',
-                X = X, #'CWD'
+                X = X,
                 W = [],
-                years = 'all', # 'all',
+                years = 'all',
                 test_scenario=True,
                 RMSE=True,
                 alternative_fluxes=None,
-                alternative_treatment=None, #"SW_IN_POT",
+                alternative_treatment=None,
                 good_years_only=True,
                 store_parameter=True,
                 )

@@ -14,12 +14,10 @@ def single_site_test():
                 relnoise=0,
                 transform_T = True,
                 month_wise= True,
-                delta = 'heuristic3', #fixed value, max_heuristic, slope_heuristic 
+                delta = 'heuristic3',
                 X = ['VPD', 'TA','wdefcum', 'SW_POT_sm', 'SW_POT_sm_diff'],
-                #X = ['VPD', 'TA','wdefcum', 'SW_POT_sm', 'SW_POT_sm_diff', 'PA', 'WS', 'GPP_prox', 'P', 'WD_sin', 'WD_cos', 'NEE_nt_avg', 'TS_1', 'TS_2', 'SWC_1', 'SWC_2', 'SW_DIF'], #['VPD', 'TA'],#
-                #X = ['VPD', 'TA', 'TS_1', 'TS_2', 'SWC_1', 'SWC_2'],
-                W = [], #['SW_POT_sm', 'SW_POT_sm_diff'], #['wdefcum'],
-                years = [2012,2013,2014], # 'all'
+                W = [], 
+                years = [2012,2013,2014],
                 norm_type = 'standardize'
                 )
         
@@ -28,23 +26,18 @@ def single_site_test():
                         min_samples_leaf = 40,
                         max_depth=1,
                         n_estimators=300,
-                        #learning_rate=0.1,
-                        #max_depth=3
                         )
     model_t_config = dict(model = 'GradientBoostingRegressor',
                         min_samples_split = 5,
                         min_samples_leaf = 40,
                         max_depth=1,
                         n_estimators=300,
-                        # max_depth=3
                         )
     model_final_config = dict(model = 'GradientBoostingRegressor',
                         min_samples_split = 5,
                         min_samples_leaf = 40,
                         max_depth=1,
                         n_estimators=300)
-                        #learning_rate=0.1,
-                        #max_depth=3
     dml_config = dict(cv=10)
 
     model_configs = dict(y = model_y_config,
@@ -62,7 +55,6 @@ def single_site_test():
     exp.configs(experiment_config, dataset_config, model_configs)
     exp.prepare_data()
     exp.fit_models()
-    #exp.all_analysis()
     dir_path = exp.PATH
 
     try:
@@ -82,12 +74,10 @@ def single_site_test_gen_data():
                 pre_computed=True,
                 transform_T = False,
                 month_wise= True,
-                delta = 'heuristic3', #fixed value, max_heuristic, slope_heuristic 
+                delta = 'heuristic3',
                 X = ['VPD', 'TA'],
-                #X = ['VPD', 'TA','wdefcum', 'SW_POT_sm', 'SW_POT_sm_diff', 'PA', 'WS', 'GPP_prox', 'P', 'WD_sin', 'WD_cos', 'NEE_nt_avg', 'TS_1', 'TS_2', 'SWC_1', 'SWC_2', 'SW_DIF'], #['VPD', 'TA'],#
-                #X = ['VPD', 'TA', 'TS_1', 'TS_2', 'SWC_1', 'SWC_2'],
-                W = ['SW_POT_sm', 'SW_POT_sm_diff'], #['SW_POT_sm', 'SW_POT_sm_diff'], #['wdefcum'],
-                years = 'all', # 'all'
+                W = ['SW_POT_sm', 'SW_POT_sm_diff'],
+                years = 'all',
                 norm_type = 'standardize'
                 )
         
@@ -95,24 +85,19 @@ def single_site_test_gen_data():
                         min_samples_split = 5,
                         min_samples_leaf = 40,
                         max_depth=1,
-                        n_estimators=300,
-                        #learning_rate=0.1,
-                        #max_depth=3
+                        n_estimators=300
                         )
     model_t_config = dict(model = 'GradientBoostingRegressor',
                         min_samples_split = 5,
                         min_samples_leaf = 40,
                         max_depth=1,
-                        n_estimators=300,
-                        # max_depth=3
+                        n_estimators=300
                         )
     model_final_config = dict(model = 'GradientBoostingRegressor',
                         min_samples_split = 5,
                         min_samples_leaf = 40,
                         max_depth=1,
                         n_estimators=300)
-                        #learning_rate=0.1,
-                        #max_depth=3
     dml_config = dict(cv=10)
 
     model_configs = dict(y = model_y_config,
@@ -130,7 +115,6 @@ def single_site_test_gen_data():
     exp.configs(experiment_config, dataset_config, model_configs)
     exp.prepare_data()
     exp.fit_models()
-    #exp.all_analysis()
     dir_path = exp.PATH
 
     try:
@@ -149,12 +133,10 @@ def all_sites_test():
                 relnoise=0,
                 transform_T = True,
                 month_wise= True,
-                delta = 'heuristic3', #fixed value, max_heuristic, slope_heuristic 
+                delta = 'heuristic3',
                 X = ['VPD', 'TA','wdefcum', 'SW_POT_sm', 'SW_POT_sm_diff'],
-                #X = ['VPD', 'TA','wdefcum', 'SW_POT_sm', 'SW_POT_sm_diff', 'PA', 'WS', 'GPP_prox', 'P', 'WD_sin', 'WD_cos', 'NEE_nt_avg', 'TS_1', 'TS_2', 'SWC_1', 'SWC_2', 'SW_DIF'], #['VPD', 'TA'],#
-                #X = ['VPD', 'TA', 'TS_1', 'TS_2', 'SWC_1', 'SWC_2'],
-                W = [], #['SW_POT_sm', 'SW_POT_sm_diff'], #['wdefcum'],
-                years = 'last', # 'all'
+                W = [],
+                years = 'last',
                 norm_type = 'standardize'
                 )
         
@@ -178,8 +160,6 @@ def all_sites_test():
                         min_samples_leaf = 40,
                         max_depth=1,
                         n_estimators=300)
-                        #learning_rate=0.1,
-                        #max_depth=3
     dml_config = dict(cv=10)
 
     model_configs = dict(y = model_y_config,
@@ -217,12 +197,10 @@ def all_sites_gen_test():
                 pre_computed=True,
                 transform_T = False,
                 month_wise= True,
-                delta = 'heuristic3', #fixed value, max_heuristic, slope_heuristic 
+                delta = 'heuristic3', 
                 X = ['VPD', 'TA'],
-                #X = ['VPD', 'TA','wdefcum', 'SW_POT_sm', 'SW_POT_sm_diff', 'PA', 'WS', 'GPP_prox', 'P', 'WD_sin', 'WD_cos', 'NEE_nt_avg', 'TS_1', 'TS_2', 'SWC_1', 'SWC_2', 'SW_DIF'], #['VPD', 'TA'],#
-                #X = ['VPD', 'TA', 'TS_1', 'TS_2', 'SWC_1', 'SWC_2'],
-                W = ['SW_POT_sm', 'SW_POT_sm_diff'], #['SW_POT_sm', 'SW_POT_sm_diff'], #['wdefcum'],
-                years = 'all', # 'all'
+                W = ['SW_POT_sm', 'SW_POT_sm_diff'],
+                years = 'all',
                 norm_type = 'standardize'
                 )
         
@@ -230,24 +208,19 @@ def all_sites_gen_test():
                         min_samples_split = 5,
                         min_samples_leaf = 40,
                         max_depth=1,
-                        n_estimators=300,
-                        #learning_rate=0.1,
-                        #max_depth=3
+                        n_estimators=300
                         )
     model_t_config = dict(model = 'GradientBoostingRegressor',
                         min_samples_split = 5,
                         min_samples_leaf = 40,
                         max_depth=1,
-                        n_estimators=300,
-                        # max_depth=3
+                        n_estimators=300
                         )
     model_final_config = dict(model = 'GradientBoostingRegressor',
                         min_samples_split = 5,
                         min_samples_leaf = 40,
                         max_depth=1,
                         n_estimators=300)
-                        #learning_rate=0.1,
-                        #max_depth=3
     dml_config = dict(cv=10)
 
     model_configs = dict(y = model_y_config,
@@ -263,8 +236,6 @@ def all_sites_gen_test():
     exp = experiment.FluxPartDML()
     exp.new('all')
     exp.configs(experiment_config, dataset_config, model_configs)
-    #exp.prepare_data()
-    #exp.fit_models()
     exp.all_analysis()
     dir_path = exp.PATH
 

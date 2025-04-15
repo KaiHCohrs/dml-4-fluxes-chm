@@ -55,11 +55,6 @@ class dml_fluxes():
         # Consider using test set and running several NonParamDML models
         # Score them on the test set and take the best one
         # Also try sklearn.model_selection.TimeSeriesSplit
-        
-        if W is None:
-            W = np.zeros((X.shape[0], 1))
-        if X_reco is None:
-            X_reco = X
             
         self.est = NonParamDML(
             model_y=self.model_y,
